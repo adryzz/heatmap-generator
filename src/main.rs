@@ -48,7 +48,7 @@ fn get_color_slow(value: u16) -> u32 {
 
 fn get_color(value: u16) -> u32 {
     let val_perc = value as i32; // scale 0-u16
-    let color_perc = U16_MAX / (MAP_COLORS.len() - 1) as i32; // scale 0-u16
+    let color_perc = U16_MAX / (MAP_COLORS_LENGTH_I32 - 1); // scale 0-u16
 
     let block_of_color = (val_perc  / color_perc) * U16_MAX; // scale 0-u16
 
@@ -91,10 +91,8 @@ fn pix(r: u32, g: u32, b: u32) -> u32 {
     (0xFF << 24) | (b << 16) | (g << 8) | r
 }
 
-const MAP_COLORS_LENGTH: usize = MAP_COLORS_LENGTH_u16 as usize;
-const MAP_COLORS_LENGTH_u32: u32 = MAP_COLORS_LENGTH_u16 as u32;
-const MAP_COLORS_LENGTH_i32: i32 = MAP_COLORS_LENGTH_u16 as i32;
-const MAP_COLORS_LENGTH_u16: u16 = 7;
+const MAP_COLORS_LENGTH: usize = 7;
+const MAP_COLORS_LENGTH_I32: i32 = MAP_COLORS_LENGTH as i32;
 const U16_MAX: i32 = u16::MAX as i32;
 
 const MAP_COLORS: [u32; MAP_COLORS_LENGTH] = [
