@@ -1,6 +1,6 @@
-use std::slice;
+use std::{io::stdin, slice};
 
-use image::{Rgba, GenericImageView};
+use image::{GenericImageView, Rgba};
 use rayon::prelude::*;
 
 fn main() {
@@ -16,59 +16,72 @@ fn main() {
         out_buf[(y * w as u32 + x) as usize] = get_color(value);
     }
 
-    image::save_buffer("image.png", convert(&out_buf[..]), w as u32, h as u32, image::ColorType::Rgba8).unwrap()
+    image::save_buffer(
+        "image.png",
+        convert(&out_buf[..]),
+        w as u32,
+        h as u32,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
 }
 
-pub fn convert<'a>(data: &'a[u32]) -> &'a[u8] {
+pub fn convert<'a>(data: &'a [u32]) -> &'a [u8] {
     unsafe { &mut slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * 4) }
 }
 
-fn get_color_slow(value: u16) -> u32 {
-    let val_perc = (value - u16::MIN) as f64 / (u16::MAX - u16::MIN) as f64;
-    let color_perc = 1.0 / (MAP_COLORS.len() - 1) as f64;
-    let block_of_color = val_perc / color_perc;
-    let block_idx = block_of_color.trunc() as usize;
-    let val_perc_resudual = val_perc - (block_of_color.trunc() * color_perc);
-    let perc_of_color = val_perc_resudual / color_perc;
+pub fn try_convert<'a>(data: &'a [u8]) -> Option<&'a [u32]> {
+    if data.len() % 4 != 0 {
+        return None;
+    }
+
+    Some(unsafe { &mut slice::from_raw_parts(data.as_ptr() as *const u32, data.len() / 4) })
+}
+
+fn get_color(value: u16) -> u32 {
+    let blocks = MAP_COLORS.len() - 1;
+    let block_of_color = value as u32 * blocks as u32;
+    let block_idx = (block_of_color >> u16::BITS) as usize;
+    let perc_of_color = block_of_color as u16;
 
     let target = MAP_COLORS[block_idx];
-    let next = if value == u16::MAX {MAP_COLORS[block_idx]} else {MAP_COLORS[block_idx + 1]};
+    let next = MAP_COLORS[block_idx + 1];
 
     let delta_r = red(next) as i32 - red(target) as i32;
     let delta_g = green(next) as i32 - green(target) as i32;
     let delta_b = blue(next) as i32 - blue(target) as i32;
 
-    let r = red(target) + (delta_r as f64 * perc_of_color) as u32;
-    let g = green(target) + (delta_g as f64 * perc_of_color) as u32;
-    let b = blue(target) + (delta_b as f64 * perc_of_color) as u32;
-
+    let r = red(target) + ((delta_r * perc_of_color as i32) >> u16::BITS) as u32;
+    let g = green(target) + ((delta_g * perc_of_color as i32) >> u16::BITS) as u32;
+    let b = blue(target) + ((delta_b * perc_of_color as i32) >> u16::BITS) as u32;
 
     return pix(r, g, b);
 }
 
-fn get_color(value: u16) -> u32 {
-    let val_perc = value as i32; // scale 0-u16
-    let color_perc = U16_MAX / (MAP_COLORS_LENGTH_I32 - 1); // scale 0-u16
+fn get_color_block(values: [u16; 8]) -> [u32; 8] {
+    let mut ret = [0u32; 8];
 
-    let block_of_color = (val_perc  / color_perc) * U16_MAX; // scale 0-u16
+    for (i, value) in values.iter().enumerate() {
+        let blocks = MAP_COLORS.len() - 1;
+        let block_of_color = *value as u32 * blocks as u32;
+        let block_idx = (block_of_color >> u16::BITS) as usize;
+        let perc_of_color = block_of_color as u16;
 
-    let block_idx = (block_of_color / U16_MAX) as usize; // correct
-    let val_perc_resudual = val_perc - (block_idx as i32 * color_perc); // scale 0-u16
-    let perc_of_color = val_perc_resudual * U16_MAX / color_perc; // scale 0-u16
+        let target = MAP_COLORS[block_idx];
+        let next = MAP_COLORS[block_idx + 1];
 
-    let target = MAP_COLORS[block_idx];
-    let next = if block_idx == MAP_COLORS_LENGTH - 1 {MAP_COLORS[block_idx]} else {MAP_COLORS[block_idx + 1]};
+        let delta_r = red(next) as i32 - red(target) as i32;
+        let delta_g = green(next) as i32 - green(target) as i32;
+        let delta_b = blue(next) as i32 - blue(target) as i32;
 
-    let delta_r = red(next) as i32 - red(target) as i32;
-    let delta_g = green(next) as i32 - green(target) as i32;
-    let delta_b = blue(next) as i32 - blue(target) as i32;
+        let r = red(target) + ((delta_r * perc_of_color as i32) >> u16::BITS) as u32;
+        let g = green(target) + ((delta_g * perc_of_color as i32) >> u16::BITS) as u32;
+        let b = blue(target) + ((delta_b * perc_of_color as i32) >> u16::BITS) as u32;
 
-    let r = red(target) + (delta_r * perc_of_color / U16_MAX) as u32;
-    let g = green(target) + (delta_g * perc_of_color / U16_MAX) as u32;
-    let b = blue(target) + (delta_b * perc_of_color / U16_MAX) as u32;
+        ret[i] = pix(r, g, b);
+    }
 
-
-    return pix(r, g, b);
+    ret
 }
 
 #[inline(always)]
